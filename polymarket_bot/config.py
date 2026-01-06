@@ -10,13 +10,14 @@ API_SECRET = os.getenv("POLYMARKET_API_SECRET")
 API_PASSPHRASE = os.getenv("POLYMARKET_API_PASSPHRASE")
 PRIVATE_KEY = os.getenv("POLYMARKET_PRIVATE_KEY") 
 
-# כתובות שרתים - התיקון הקריטי כאן
+# כתובות שרתים
 GAMMA_API_URL = "https://gamma-api.polymarket.com"
 CLOB_URL = "https://clob.polymarket.com"
-# שרת ייעודי לעדכוני שוק
-CLOB_WS_URL = "wss://ws-subscriptions-clob.polymarket.com/ws/market" 
 
-CHAIN_ID = 137  # Polygon Mainnet
+# הכתובת הנכונה ל-WebSocket (ללא /market בסוף)
+CLOB_WS_URL = "wss://ws-subscriptions-clob.polymarket.com/ws/" 
+
+CHAIN_ID = 137
 
 # הגדרות מסחר
 PROFIT_THRESHOLD = 0.02

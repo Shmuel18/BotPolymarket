@@ -10,6 +10,7 @@ class WebSocketManager:
         self.prices = {}
 
     async def connect(self):
+        """מתחבר לשרת ה-WebSocket של פולימרקט"""
         try:
             self.ws = await websockets.connect(CLOB_WS_URL)
             print("Connected to CLOB WebSocket.")
@@ -19,28 +20,39 @@ class WebSocketManager:
             return False
 
     async def subscribe(self, clob_token_id):
-        payload = {
-            "type": "subscribe",
-            "channels": ["order_book"],
-            "assets_ids": [clob_token_id]
-        }
-        await self.ws.send(json.dumps(payload))
-        print(f"Subscribed to updates for: {clob_token_id}")
+        """נרשם לעדכוני מחיר עבור טוקן בודד"""
+        if self.ws:
+            payload = {
+                "type": "subscribe",
+                "channels": ["order_book"],
+                "assets_ids": [clob_token_id]
+            }
+            await self.ws.send(json.dumps(payload))
+            print(f"Subscribed to: {clob_token_id}")
 
     async def receive_data(self, callback):
+        """מאזין לנתונים ומפעיל את פונקציית הטיפול"""
+        if not self.ws:
+            return
+
         try:
             async for message in self.ws:
-                data = json.loads(message)
+                if not message:
+                    continue
                 
-                # בדיקת הודעות ספר פקודות
-                if "bids" in data and len(data["bids"]) > 0:
-                    token_id = data.get("asset_id")
-                    price = float(data["bids"][0][0])
-                    self.prices[token_id] = price
-                    await callback(token_id, price)
+                try:
+                    data = json.loads(message)
+                except json.JSONDecodeError:
+                    continue
                 
-                # הודעת דופק מהשרת (כדי לדעת שהחיבור חי)
-                elif data.get("type") == "pong":
-                    pass 
+                # טיפול ברשימת הודעות או הודעה בודדת
+                messages = data if isinstance(data, list) else [data]
+                
+                for msg in messages:
+                    if isinstance(msg, dict) and "bids" in msg and len(msg["bids"]) > 0:
+                        token_id = msg.get("asset_id")
+                        price = float(msg["bids"][0][0])
+                        self.prices[token_id] = price
+                        await callback(token_id, price)
         except Exception as e:
             print(f"WS Error: {e}")
