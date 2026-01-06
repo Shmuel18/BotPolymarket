@@ -1,0 +1,6 @@
+py-clob-client
+websockets
+requests
+dotenv
+pandas
+ccxt
