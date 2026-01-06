@@ -4,18 +4,20 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# מפתחות API - וודא שהם קיימים ב-.env שלך
+# מפתחות API - לפי השמות ב-.env שלך
 API_KEY = os.getenv("POLYMARKET_API_KEY")
 API_SECRET = os.getenv("POLYMARKET_API_SECRET")
 API_PASSPHRASE = os.getenv("POLYMARKET_API_PASSPHRASE")
-PRIVATE_KEY = os.getenv("POLYMARKET_PRIVATE_KEY") # מפתח פרטי של הארנק
+PRIVATE_KEY = os.getenv("POLYMARKET_PRIVATE_KEY") 
 
-# כתובות שרתים
+# כתובות שרתים - התיקון הקריטי כאן
 GAMMA_API_URL = "https://gamma-api.polymarket.com"
 CLOB_URL = "https://clob.polymarket.com"
-CLOB_WS_URL = "wss://clob.polymarket.com"
+# שרת ייעודי לעדכוני שוק
+CLOB_WS_URL = "wss://ws-subscriptions-clob.polymarket.com/ws/market" 
+
 CHAIN_ID = 137  # Polygon Mainnet
 
 # הגדרות מסחר
-PROFIT_THRESHOLD = 0.02  # סף רווח של 2%
-MAX_USDC_ALLOCATION = 0.05  # 5% מהיתרה לכל טרייד
+PROFIT_THRESHOLD = 0.02
+MAX_USDC_ALLOCATION = 0.05
