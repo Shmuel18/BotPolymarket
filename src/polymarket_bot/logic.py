@@ -54,21 +54,22 @@ def check_arbitrage(pairs: List[Dict[str, Any]],
                 logger.debug(f"Invalid price range - Parent: {price_parent}, Child: {price_child}")
                 continue
             
-            # Arbitrage detection:
-            # Price(harder condition) should always be <= Price(easier condition)
-            # If Price(child) > Price(parent), it's an arbitrage opportunity
-            profit = price_parent - price_child  # How much we profit
+            # CORRECT Arbitrage detection:
+            # Price(harder/child condition) should ALWAYS be <= Price(easier/parent condition)
+            # If Price(child) > Price(parent), it's MISPRICED → arbitrage opportunity
+            # Strategy: BUY parent (cheap), SELL child (expensive)
+            profit = price_child - price_parent  # How much we profit (child should be less!)
             
             if profit >= min_profit:
                 opportunity = {
                     'event': event_title,
-                    'easy_condition_id': parent_id,
-                    'hard_condition_id': child_id,
+                    'easy_condition_id': parent_id,  # Buy this (should be cheaper)
+                    'hard_condition_id': child_id,   # Sell this (incorrectly expensive)
                     'easy_price': price_parent,
                     'hard_price': price_child,
                     'profit_margin': profit,
-                    'profit_pct': (profit / price_parent * 100) if price_parent > 0 else 0,
-                    'strategy': 'Buy hard condition (cheap) + Sell easy condition (expensive)'
+                    'profit_pct': (profit / price_child * 100) if price_child > 0 else 0,
+                    'strategy': 'BUY parent (easy/cheap) + SELL child (hard/expensive) = PROFIT'
                 }
                 opportunities.append(opportunity)
                 logger.info(f"[ARBITRAGE] {event_title} | "

@@ -26,6 +26,9 @@ class PolymarketBot:
         self.last_scan_time = 0
         self.running = True
         self.shutdown_event = asyncio.Event()
+        # State machine to prevent duplicate trades
+        self.last_trade_attempt: Dict[str, float] = {}  # event_id -> timestamp
+        self.trade_cooldown = 60  # seconds between trades on same event
         self.stats = {
             'opportunities_found': 0,
             'trades_executed': 0,
@@ -54,11 +57,46 @@ class PolymarketBot:
     async def handle_opportunity(self, opportunity: Dict) -> None:
         """Process and potentially execute an arbitrage opportunity."""
         try:
+            event_id = opportunity['event']
+            current_time = asyncio.get_event_loop().time()
+            
+            # Check if we recently traded this event (prevent duplicates)
+            if event_id in self.last_trade_attempt:
+                time_since_last = current_time - self.last_trade_attempt[event_id]
+                if time_since_last < self.trade_cooldown:
+                    logger.debug(f"[SKIP] {event_id} - Cooldown active ({time_since_last:.0f}s ago)")
+                    return
+            
             logger.info(
                 f"[OPPORTUNITY] {opportunity['event']} | "
                 f"Profit: ${opportunity['profit_margin']:.4f} "
-                f"({opportunity['profit_pct']:.2f}%)"
+                f"({opportunity['profit_pct']:.2f}%) | "
+                f"Strategy: {opportunity['strategy']}"
             )
+            
+            # Execute trade if executor is initialized
+            if self.executor:
+                # Update last attempt timestamp
+                self.last_trade_attempt[event_id] = current_time
+                
+                # Calculate order size (5% of balance max, or $10 minimum)
+                await self.executor.get_usdc_balance()
+                order_size = max(10.0, self.executor.usdc_balance * 0.05) / opportunity['easy_price']
+                
+                logger.info(f"[EXECUTE] Attempting arbitrage trade with size: {order_size:.2f}")
+                
+                success = self.executor.execute_arbitrage(opportunity, order_size)
+                
+                if success:
+                    self.stats['trades_executed'] += 1
+                    profit = opportunity['profit_margin'] * order_size
+                    self.stats['total_pnl'] += profit
+                    logger.info(f"✅ [SUCCESS] Trade executed! Estimated profit: ${profit:.4f}")
+                else:
+                    logger.warning(f"⚠️ [FAILED] Trade execution failed for {event_id}")
+            else:
+                logger.warning("[WARNING] Executor not initialized - opportunity logged only")
+                
         except Exception as e:
             logger.error(f"Error handling opportunity: {e}")
     
@@ -70,7 +108,8 @@ class PolymarketBot:
         """
         try:
             logger.info("[SCAN] Searching for hierarchical markets...")
-            markets = scan_polymarket_for_hierarchical_markets()
+            # Run blocking scan in thread to avoid blocking event loop
+            markets = await asyncio.to_thread(scan_polymarket_for_hierarchical_markets)
             
             if not markets:
                 logger.warning("[SCAN] No hierarchical markets found")

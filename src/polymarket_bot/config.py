@@ -17,12 +17,14 @@ API_SECRET = os.getenv("POLYMARKET_API_SECRET")
 API_PASSPHRASE = os.getenv("POLYMARKET_API_PASSPHRASE")
 PRIVATE_KEY = os.getenv("POLYMARKET_PRIVATE_KEY")
 
-# Validate required credentials
+# Validate required credentials - FAIL HARD if missing
 required_env_vars = ["POLYMARKET_API_KEY", "POLYMARKET_API_SECRET", 
                      "POLYMARKET_API_PASSPHRASE", "POLYMARKET_PRIVATE_KEY"]
-for var in required_env_vars:
-    if not os.getenv(var):
-        logging.warning(f"Missing environment variable: {var}")
+missing_vars = [var for var in required_env_vars if not os.getenv(var)]
+if missing_vars:
+    error_msg = f"CRITICAL: Missing required environment variables: {', '.join(missing_vars)}"
+    logging.error(error_msg)
+    raise EnvironmentError(error_msg)
 
 # API URLs
 GAMMA_API_URL = "https://gamma-api.polymarket.com"

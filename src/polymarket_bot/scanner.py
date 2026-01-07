@@ -129,19 +129,34 @@ def scan_polymarket_for_hierarchical_markets(retry_count: int = 0) -> Dict[str, 
                 else:
                     token_ids = []
                 
-                if token_ids:
+                # Extract threshold for sorting
+                threshold = extract_price_threshold(question)
+                
+                # Get YES token explicitly (usually index 1, but check outcomes)
+                yes_token = None
+                if len(token_ids) >= 2:
+                    yes_token = token_ids[1]  # Usually YES is second
+                elif len(token_ids) == 1:
+                    yes_token = token_ids[0]  # Fallback
+                
+                if yes_token:
                     market_pairs.append({
                         "question": question,
                         "conditionId": cond_id,
-                        "clobTokenId": token_ids[0],  # Use first token ID
-                        "clobTokenIds": token_ids
+                        "clobTokenId": yes_token,  # Use YES token explicitly
+                        "clobTokenIds": token_ids,
+                        "threshold": threshold if threshold else 999999  # High value if no threshold
                     })
+            
+            # Sort by threshold (ascending) to ensure correct parent/child order
+            market_pairs.sort(key=lambda m: m.get('threshold', 999999))
             
             # If we have 2+ markets with token IDs, it's hierarchical
             if len(market_pairs) >= 2:
                 hierarchical_markets[event_title] = {
                     "clob_token_ids": [m["clobTokenId"] for m in market_pairs],
                     "questions": [m["question"] for m in market_pairs],
+                    "thresholds": [m.get("threshold") for m in market_pairs],
                     "market_count": len(market_pairs),
                     "all_token_ids": [m["clobTokenIds"] for m in market_pairs]
                 }
