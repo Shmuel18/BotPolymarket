@@ -1,7 +1,7 @@
 # executor.py
 import logging
 import asyncio
-from typing import Optional, Dict, Any, Tuple
+from typing import Optional, Dict, Any, Tuple, List
 from dataclasses import dataclass
 from datetime import datetime
 from py_clob_client.client import ClobClient
