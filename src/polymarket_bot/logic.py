@@ -37,6 +37,8 @@ def check_arbitrage(pairs: List[Dict[str, Any]],
             parent_id = pair.get('parent_id')  # Lower threshold (e.g., "BTC > 100k")
             child_id = pair.get('child_id')    # Higher threshold (e.g., "BTC > 105k")
             event_title = pair.get('event_title', 'Unknown')
+            parent_all_tokens = pair.get('parent_all_tokens', [])
+            child_all_tokens = pair.get('child_all_tokens', [])
             
             if not parent_id or not child_id:
                 logger.warning(f"Invalid pair structure: {pair}")
@@ -67,9 +69,11 @@ def check_arbitrage(pairs: List[Dict[str, Any]],
                     'hard_condition_id': child_id,   # Sell this (incorrectly expensive)
                     'easy_price': price_parent,
                     'hard_price': price_child,
+                    'easy_condition_all_tokens': parent_all_tokens,  # For NO token lookup
+                    'hard_condition_all_tokens': child_all_tokens,   # For NO token lookup
                     'profit_margin': profit,
                     'profit_pct': (profit / price_child * 100) if price_child > 0 else 0,
-                    'strategy': 'BUY parent (easy/cheap) + SELL child (hard/expensive) = PROFIT'
+                    'strategy': 'BUY parent (easy/cheap) + BUY NO on child (hard/expensive) = PROFIT'
                 }
                 opportunities.append(opportunity)
                 logger.info(f"[ARBITRAGE] {event_title} | "

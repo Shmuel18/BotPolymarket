@@ -121,13 +121,16 @@ class PolymarketBot:
             
             for event_title, market_data in markets.items():
                 token_ids = market_data.get("clob_token_ids", [])
+                all_tokens_list = market_data.get("all_token_ids", [])
                 
                 # Create pairs for consecutive thresholds
                 for i in range(len(token_ids) - 1):
                     pair = {
                         'event_title': event_title,
                         'parent_id': token_ids[i],
-                        'child_id': token_ids[i + 1]
+                        'child_id': token_ids[i + 1],
+                        'parent_all_tokens': all_tokens_list[i] if i < len(all_tokens_list) else [],
+                        'child_all_tokens': all_tokens_list[i + 1] if i + 1 < len(all_tokens_list) else []
                     }
                     self.active_pairs.append(pair)
                     new_tokens.add(token_ids[i])

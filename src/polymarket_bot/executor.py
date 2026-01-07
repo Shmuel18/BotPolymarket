@@ -181,8 +181,8 @@ class OrderExecutor:
             # 1. VALIDATE PRE-CONDITIONS
             logger.info(f"🔍 Validating arbitrage conditions for: {opportunity['event']}")
             
-            # Check balance
-            required_usdc = order_size * opportunity['hard_price']  # Worst case cost
+            # Check balance (now calculating for BUYING the easy condition)
+            required_usdc = order_size * opportunity['easy_price']  # We BUY the cheaper one
             if self.usdc_balance < required_usdc:
                 logger.error(f"❌ Insufficient balance. Need: ${required_usdc:.2f}, Have: ${self.usdc_balance:.2f}")
                 return False
@@ -192,14 +192,19 @@ class OrderExecutor:
                 logger.warning(f"⚠️ Profit margin {opportunity['profit_margin']:.2%} < Slippage tolerance {SLIPPAGE_TOLERANCE:.2%}")
                 return False
             
-            # 2. EXECUTE LEG 1 (BUY HARD CONDITION)
-            logger.info(f"📈 LEG 1: Buying hard condition @ ${opportunity['hard_price']}")
+            # Add price buffer for better execution (1% above bid for buys)
+            buy_price_with_buffer = min(opportunity['easy_price'] * 1.01, 0.99)
+            no_token_price = 1.0 - opportunity['hard_price']  # NO price = 1 - YES price
+            buy_no_price_with_buffer = min(no_token_price * 1.01, 0.99)
+            
+            # 2. EXECUTE LEG 1 (BUY EASY CONDITION - THE CHEAP ONE)
+            logger.info(f"📈 LEG 1: Buying EASY condition (cheap) @ ${buy_price_with_buffer:.4f}")
             
             leg1 = self.execute_trade(
-                clob_token_id=opportunity['hard_condition_id'],
+                clob_token_id=opportunity['easy_condition_id'],  # FIXED: Buy the CHEAP one
                 side='buy',
                 size=order_size,
-                price=opportunity['hard_price'],
+                price=buy_price_with_buffer,
                 order_type='limit'
             )
             
@@ -210,14 +215,28 @@ class OrderExecutor:
             leg1_order_id = leg1.get('id', leg1.get('orderId'))
             logger.info(f"✅ LEG 1 SUCCESS: Order {leg1_order_id}")
             
-            # 3. EXECUTE LEG 2 (SELL EASY CONDITION)
-            logger.info(f"📉 LEG 2: Selling easy condition @ ${opportunity['easy_price']}")
+            # 3. EXECUTE LEG 2 (BUY NO ON HARD CONDITION - THE EXPENSIVE ONE)
+            # NOTE: We buy NO token (not sell YES) because we don't own YES tokens yet
+            logger.info(f"📉 LEG 2: Buying NO on HARD condition (expensive) @ ${buy_no_price_with_buffer:.4f}")
+            
+            # Get NO token ID for the hard condition
+            hard_no_token_id = self._get_no_token_id(opportunity.get('hard_condition_all_tokens', []))
+            if not hard_no_token_id:
+                logger.error("❌ Cannot find NO token for hard condition")
+                # Reverse leg 1
+                self._execute_stop_loss(
+                    leg1_order_id=leg1_order_id,
+                    token_id=opportunity['easy_condition_id'],
+                    order_size=order_size,
+                    entry_price=buy_price_with_buffer
+                )
+                return False
             
             leg2 = self.execute_trade(
-                clob_token_id=opportunity['easy_condition_id'],
-                side='sell',
+                clob_token_id=hard_no_token_id,  # FIXED: Buy NO token (not sell YES)
+                side='buy',  # FIXED: Buy (not sell)
                 size=order_size,
-                price=opportunity['easy_price'],
+                price=buy_no_price_with_buffer,
                 order_type='limit'
             )
             
@@ -244,8 +263,8 @@ class OrderExecutor:
                 leg2_order_id=leg2_order_id,
                 leg1_status='confirmed',
                 leg2_status='confirmed',
-                entry_price=opportunity['hard_price'],
-                exit_price=opportunity['easy_price'],
+                entry_price=buy_price_with_buffer,  # What we paid for easy condition
+                exit_price=buy_no_price_with_buffer,  # What we paid for NO on hard
                 profit_margin=opportunity['profit_margin'],
                 order_size=order_size,
                 usdc_invested=required_usdc
@@ -259,6 +278,23 @@ class OrderExecutor:
         except Exception as e:
             logger.error(f"Arbitrage execution failed: {e}")
             return False
+    
+    def _get_no_token_id(self, all_tokens: List[str]) -> Optional[str]:
+        """Get NO token ID from list of tokens.
+        
+        Args:
+            all_tokens: List of token IDs [YES_token, NO_token]
+        
+        Returns:
+            NO token ID or None
+        """
+        try:
+            if isinstance(all_tokens, list) and len(all_tokens) >= 2:
+                return all_tokens[0]  # Usually NO is first, YES is second
+            return None
+        except Exception as e:
+            logger.error(f"Failed to get NO token: {e}")
+            return None
     
     def _execute_stop_loss(self, leg1_order_id: str, token_id: str, 
                           order_size: float, entry_price: float) -> bool:

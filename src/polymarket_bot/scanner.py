@@ -33,6 +33,22 @@ def extract_price_threshold(question: str) -> Optional[float]:
         logger.debug(f"Failed to extract threshold from '{question}': {e}")
         return None
 
+def get_question_direction(question: str) -> Optional[str]:
+    """Determine if question is 'above' or 'below' type.
+    
+    Args:
+        question: Market question text
+    
+    Returns:
+        'above' or 'below' or None if unclear
+    """
+    q_lower = question.lower()
+    if any(word in q_lower for word in ['above', 'over', 'more than', 'exceed', 'higher']):
+        return 'above'
+    elif any(word in q_lower for word in ['below', 'under', 'less than', 'lower']):
+        return 'below'
+    return None
+
 def extract_clob_token_id(market: Dict[str, Any]) -> Optional[str]:
     """Extract clobTokenId from market data, handling various formats.
     
@@ -110,11 +126,13 @@ def scan_polymarket_for_hierarchical_markets(retry_count: int = 0) -> Dict[str, 
                 continue
 
             market_pairs = []
+            directions = []  # Track direction consistency
             
             # Extract token IDs for all markets in the event
             for market in markets:
                 question = market.get('question', '')
                 cond_id = market.get('conditionId', '')
+                outcomes = market.get('outcomes', [])  # Get outcomes explicitly
                 
                 # Get token IDs (can be string or list)
                 token_ids_raw = market.get('clobTokenIds', [])
@@ -131,22 +149,38 @@ def scan_polymarket_for_hierarchical_markets(retry_count: int = 0) -> Dict[str, 
                 
                 # Extract threshold for sorting
                 threshold = extract_price_threshold(question)
+                direction = get_question_direction(question)
                 
-                # Get YES token explicitly (usually index 1, but check outcomes)
+                # Find YES token explicitly from outcomes
                 yes_token = None
-                if len(token_ids) >= 2:
-                    yes_token = token_ids[1]  # Usually YES is second
+                if outcomes and len(outcomes) >= 2 and len(token_ids) >= 2:
+                    # Match outcome to token
+                    for i, outcome in enumerate(outcomes):
+                        if outcome.lower() == 'yes' and i < len(token_ids):
+                            yes_token = token_ids[i]
+                            break
+                    if not yes_token:  # Fallback: usually YES is second
+                        yes_token = token_ids[1] if len(token_ids) >= 2 else token_ids[0]
+                elif len(token_ids) >= 2:
+                    yes_token = token_ids[1]  # Fallback
                 elif len(token_ids) == 1:
-                    yes_token = token_ids[0]  # Fallback
+                    yes_token = token_ids[0]
                 
-                if yes_token:
+                if yes_token and direction:
                     market_pairs.append({
                         "question": question,
                         "conditionId": cond_id,
-                        "clobTokenId": yes_token,  # Use YES token explicitly
-                        "clobTokenIds": token_ids,
-                        "threshold": threshold if threshold else 999999  # High value if no threshold
+                        "clobTokenId": yes_token,  # YES token explicitly
+                        "clobTokenIds": token_ids,  # All tokens for NO lookup
+                        "threshold": threshold if threshold else 999999,
+                        "direction": direction
                     })
+                    directions.append(direction)
+            
+            # Check direction consistency - all must be same direction
+            if directions and len(set(directions)) > 1:
+                logger.warning(f"Mixed directions in {event_title}: {set(directions)} - skipping")
+                continue
             
             # Sort by threshold (ascending) to ensure correct parent/child order
             market_pairs.sort(key=lambda m: m.get('threshold', 999999))
