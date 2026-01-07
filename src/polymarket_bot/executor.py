@@ -271,7 +271,8 @@ class OrderExecutor:
             )
             self.transactions[transaction.transaction_id] = transaction
             
-            profit = (opportunity['profit_margin'] * order_size * opportunity['easy_price'])
+            # CORRECT profit calculation: profit_margin is already per-unit profit
+            profit = opportunity['profit_margin'] * order_size
             logger.info(f"🎯 ✅ ARBITRAGE SUCCESS - Expected profit: ${profit:.4f}")
             return True
             

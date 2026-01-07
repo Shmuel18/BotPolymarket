@@ -21,6 +21,7 @@ class PolymarketBot:
         self.ws = WebSocketManager()
         self.executor: Optional[OrderExecutor] = None
         self.current_prices: Dict[str, float] = {}
+        self.price_timestamps: Dict[str, float] = {}  # Track price freshness
         self.active_pairs: List[Dict] = []
         self.subscribed_tokens: Set[str] = set()
         self.last_scan_time = 0
@@ -43,7 +44,9 @@ class PolymarketBot:
             token_id: Token ID that was updated
             price: New bid price
         """
+        current_time = asyncio.get_event_loop().time()
         self.current_prices[token_id] = price
+        self.price_timestamps[token_id] = current_time  # Track freshness
         self.stats['price_updates'] += 1
         
         # Check for arbitrage opportunities
@@ -76,14 +79,39 @@ class PolymarketBot:
             
             # Execute trade if executor is initialized
             if self.executor:
+                # Check price freshness (prices should be recent)
+                easy_price_data = self.price_timestamps.get(opportunity['easy_condition_id'])
+                hard_price_data = self.price_timestamps.get(opportunity['hard_condition_id'])
+                
+                if easy_price_data and hard_price_data:
+                    age_easy = current_time - easy_price_data
+                    age_hard = current_time - hard_price_data
+                    max_price_age = 10  # seconds
+                    
+                    if age_easy > max_price_age or age_hard > max_price_age:
+                        logger.warning(f"[SKIP] Prices too stale. Easy: {age_easy:.1f}s, Hard: {age_hard:.1f}s")
+                        return
+                
                 # Update last attempt timestamp
                 self.last_trade_attempt[event_id] = current_time
                 
-                # Calculate order size (5% of balance max, or $10 minimum)
+                # Calculate order size with proper cap
                 await self.executor.get_usdc_balance()
-                order_size = max(10.0, self.executor.usdc_balance * 0.05) / opportunity['easy_price']
                 
-                logger.info(f"[EXECUTE] Attempting arbitrage trade with size: {order_size:.2f}")
+                max_usdc_per_trade = self.executor.usdc_balance * 0.05  # 5% max
+                min_usdc_per_trade = 10.0  # $10 minimum
+                max_position_cap = 500.0  # $500 hard cap per trade
+                
+                usdc_to_use = min(max_usdc_per_trade, self.executor.usdc_balance, max_position_cap)
+                usdc_to_use = max(min_usdc_per_trade, usdc_to_use)
+                
+                order_size = usdc_to_use / opportunity['easy_price']
+                
+                logger.info(
+                    f"[EXECUTE] Trade size: {order_size:.2f} shares (${usdc_to_use:.2f} USDC) | "
+                    f"Easy: {opportunity['easy_condition_id'][:8]}... | "
+                    f"Hard: {opportunity['hard_condition_id'][:8]}..."
+                )
                 
                 success = self.executor.execute_arbitrage(opportunity, order_size)
                 

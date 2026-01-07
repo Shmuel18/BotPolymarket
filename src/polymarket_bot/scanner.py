@@ -151,20 +151,29 @@ def scan_polymarket_for_hierarchical_markets(retry_count: int = 0) -> Dict[str, 
                 threshold = extract_price_threshold(question)
                 direction = get_question_direction(question)
                 
-                # Find YES token explicitly from outcomes
+                # Find YES token explicitly from outcomes (CRITICAL!)
                 yes_token = None
-                if outcomes and len(outcomes) >= 2 and len(token_ids) >= 2:
-                    # Match outcome to token
-                    for i, outcome in enumerate(outcomes):
-                        if outcome.lower() == 'yes' and i < len(token_ids):
-                            yes_token = token_ids[i]
-                            break
-                    if not yes_token:  # Fallback: usually YES is second
-                        yes_token = token_ids[1] if len(token_ids) >= 2 else token_ids[0]
-                elif len(token_ids) >= 2:
-                    yes_token = token_ids[1]  # Fallback
-                elif len(token_ids) == 1:
-                    yes_token = token_ids[0]
+                
+                # Method 1: Match by outcomes list (most reliable)
+                if isinstance(outcomes, list) and outcomes and isinstance(token_ids, list):
+                    try:
+                        # Find "Yes" in outcomes (case-insensitive)
+                        yes_idx = next(i for i, o in enumerate(outcomes) 
+                                      if str(o).strip().lower() == "yes")
+                        if 0 <= yes_idx < len(token_ids):
+                            yes_token = token_ids[yes_idx]
+                            logger.debug(f"Found YES token at index {yes_idx} via outcomes")
+                    except StopIteration:
+                        pass
+                
+                # Method 2: Fallback heuristics (for backwards compatibility)
+                if not yes_token:
+                    if len(token_ids) >= 2:
+                        yes_token = token_ids[1]  # Usually YES is second
+                        logger.debug(f"Using fallback: token_ids[1] as YES")
+                    elif len(token_ids) == 1:
+                        yes_token = token_ids[0]
+                        logger.debug(f"Single token - using token_ids[0]")
                 
                 if yes_token and direction:
                     market_pairs.append({
