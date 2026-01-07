@@ -42,8 +42,21 @@ class OrderExecutor:
             logger.error(f"Failed to initialize: {e}"); raise
 
     async def get_usdc_balance(self) -> float:
-        """עקיפת בדיקת יתרה למניעת שגיאות גרסת ספריה."""
-        self.usdc_balance = 1000.0 
+        """בדיקת יתרה אמיתית מה-API."""
+        try:
+            # נסיון לקבל יתרה אמיתית
+            balance_info = self.client.get_balance_allowance()
+            if balance_info and 'balance' in balance_info:
+                self.usdc_balance = float(balance_info['balance'])
+                logger.info(f"💰 Real USDC Balance: ${self.usdc_balance:.2f}")
+            else:
+                # אם לא מצליח, נשתמש בערך דיפולט נמוך
+                self.usdc_balance = 40.0
+                logger.warning(f"⚠️ Could not fetch real balance, using default: ${self.usdc_balance}")
+        except Exception as e:
+            # אם יש שגיאה, נשתמש בערך דיפולט
+            self.usdc_balance = 40.0
+            logger.warning(f"⚠️ Error fetching balance: {e}, using default: ${self.usdc_balance}")
         return self.usdc_balance
 
     def execute_trade(self, token_id: str, side: str, size: float, price: float) -> Optional[Dict]:

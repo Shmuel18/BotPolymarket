@@ -104,14 +104,19 @@ class PolymarketBot:
                 # Calculate order size with proper cap
                 await self.executor.get_usdc_balance()
                 
-                max_usdc_per_trade = self.executor.usdc_balance * 0.05  # 5% max
-                min_usdc_per_trade = 10.0  # $10 minimum
-                max_position_cap = 500.0  # $500 hard cap per trade
+                max_usdc_per_trade = self.executor.usdc_balance * 0.1  # 10% max per trade
+                min_usdc_per_trade = 5.0  # $5 minimum (Polymarket requires min 5 shares)
+                max_position_cap = 50.0  # $50 hard cap per trade
                 
                 usdc_to_use = min(max_usdc_per_trade, self.executor.usdc_balance, max_position_cap)
                 usdc_to_use = max(min_usdc_per_trade, usdc_to_use)
                 
                 order_size = usdc_to_use / opportunity['easy_price']
+                
+                # Ensure minimum 5 shares as required by Polymarket
+                if order_size < 5.0:
+                    order_size = 5.0
+                    usdc_to_use = order_size * opportunity['easy_price']
                 
                 logger.info(
                     f"[EXECUTE] Trade size: {order_size:.2f} shares (${usdc_to_use:.2f} USDC) | "
