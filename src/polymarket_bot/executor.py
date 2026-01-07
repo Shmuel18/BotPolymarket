@@ -220,7 +220,10 @@ class OrderExecutor:
             logger.info(f"📉 LEG 2: Buying NO on HARD condition (expensive) @ ${buy_no_price_with_buffer:.4f}")
             
             # Get NO token ID for the hard condition
-            hard_no_token_id = self._get_no_token_id(opportunity.get('hard_condition_all_tokens', []))
+            hard_no_token_id = self._get_no_token_id(
+                opportunity.get('hard_condition_all_tokens', []),
+                yes_token_id=opportunity.get('hard_condition_id')  # Exclude the YES token
+            )
             if not hard_no_token_id:
                 logger.error("❌ Cannot find NO token for hard condition")
                 # Reverse leg 1
@@ -243,12 +246,13 @@ class OrderExecutor:
             if not leg2:
                 logger.error("❌ LEG 2 FAILED - EXECUTING STOP LOSS")
                 
-                # ATOMIC FAILURE: Reverse leg 1 with stop loss
+                # ATOMIC FAILURE: Reverse leg 1 by selling the EASY condition we bought
+                # NOT the hard condition!
                 self._execute_stop_loss(
                     leg1_order_id=leg1_order_id,
-                    token_id=opportunity['hard_condition_id'],
+                    token_id=opportunity['easy_condition_id'],  # FIXED: Sell what we bought!
                     order_size=order_size,
-                    entry_price=opportunity['hard_price']
+                    entry_price=buy_price_with_buffer
                 )
                 return False
             
@@ -280,19 +284,31 @@ class OrderExecutor:
             logger.error(f"Arbitrage execution failed: {e}")
             return False
     
-    def _get_no_token_id(self, all_tokens: List[str]) -> Optional[str]:
+    def _get_no_token_id(self, all_tokens: List[str], yes_token_id: Optional[str] = None) -> Optional[str]:
         """Get NO token ID from list of tokens.
         
         Args:
-            all_tokens: List of token IDs [YES_token, NO_token]
+            all_tokens: List of token IDs [token1, token2]
+            yes_token_id: Explicit YES token ID to exclude
         
         Returns:
             NO token ID or None
         """
         try:
-            if isinstance(all_tokens, list) and len(all_tokens) >= 2:
-                return all_tokens[0]  # Usually NO is first, YES is second
-            return None
+            if not isinstance(all_tokens, list) or len(all_tokens) < 2:
+                return None
+            
+            # If we know which is YES, return the other one
+            if yes_token_id:
+                for token in all_tokens:
+                    if token != yes_token_id:
+                        logger.debug(f"Found NO token (NOT {yes_token_id[:8]}): {token[:8]}")
+                        return token
+            
+            # Fallback: assume NO is first, YES is second
+            logger.debug(f"Using fallback: assuming all_tokens[0] is NO")
+            return all_tokens[0]
+            
         except Exception as e:
             logger.error(f"Failed to get NO token: {e}")
             return None

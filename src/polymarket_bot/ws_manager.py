@@ -132,10 +132,22 @@ class WebSocketManager:
                         continue
                     
                     # Extract best bid (highest bid price = best offer to buy)
-                    if "bids" in msg and len(msg["bids"]) > 0:
+                    if "bids" in msg and msg["bids"]:
                         try:
                             token_id = msg.get("asset_id")
-                            price = float(msg["bids"][0][0])
+                            bids = msg["bids"]
+                            
+                            # Validate bids array
+                            if not isinstance(bids, list) or len(bids) == 0:
+                                logger.debug(f"Empty bids for {token_id[:8] if token_id else 'unknown'}")
+                                continue
+                            
+                            price = float(bids[0][0])
+                            
+                            # Sanity check: price should be 0-1 for yes/no tokens
+                            if not (0 <= price <= 1):
+                                logger.warning(f"⚠️ Price sanity check FAILED: {price} for {token_id[:8] if token_id else 'unknown'} (expected 0-1)")
+                                continue
                             
                             if token_id and price >= 0:
                                 self.prices[token_id] = price

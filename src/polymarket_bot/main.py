@@ -61,13 +61,15 @@ class PolymarketBot:
         """Process and potentially execute an arbitrage opportunity."""
         try:
             event_id = opportunity['event']
+            # Enhanced dedup key: include token pair
+            pair_key = (event_id, opportunity['easy_condition_id'], opportunity['hard_condition_id'])
             current_time = asyncio.get_event_loop().time()
             
-            # Check if we recently traded this event (prevent duplicates)
-            if event_id in self.last_trade_attempt:
-                time_since_last = current_time - self.last_trade_attempt[event_id]
+            # Check if we recently traded this exact pair
+            if pair_key in self.last_trade_attempt:
+                time_since_last = current_time - self.last_trade_attempt[pair_key]
                 if time_since_last < self.trade_cooldown:
-                    logger.debug(f"[SKIP] {event_id} - Cooldown active ({time_since_last:.0f}s ago)")
+                    logger.debug(f"[SKIP] {event_id} pair - Cooldown active ({time_since_last:.0f}s ago)")
                     return
             
             logger.info(
@@ -92,8 +94,8 @@ class PolymarketBot:
                         logger.warning(f"[SKIP] Prices too stale. Easy: {age_easy:.1f}s, Hard: {age_hard:.1f}s")
                         return
                 
-                # Update last attempt timestamp
-                self.last_trade_attempt[event_id] = current_time
+                # Update last attempt timestamp with pair key
+                self.last_trade_attempt[pair_key] = current_time
                 
                 # Calculate order size with proper cap
                 await self.executor.get_usdc_balance()
@@ -113,7 +115,12 @@ class PolymarketBot:
                     f"Hard: {opportunity['hard_condition_id'][:8]}..."
                 )
                 
-                success = self.executor.execute_arbitrage(opportunity, order_size)
+                # Execute arbitrage in thread to avoid blocking event loop
+                success = await asyncio.to_thread(
+                    self.executor.execute_arbitrage, 
+                    opportunity, 
+                    order_size
+                )
                 
                 if success:
                     self.stats['trades_executed'] += 1
